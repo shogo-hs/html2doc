@@ -26,6 +26,7 @@ class DocumentState(TypedDict, total=False):
     html: str
     sections: List[SectionChunk]
     assets: List[Asset]
+    outline: str
     knowledge_items: List[KnowledgeUnit]
     relationships: List[RelationEdge]
     markdown: str
@@ -46,9 +47,16 @@ def _parse_html(state: DocumentState) -> DocumentState:
     return {"sections": sections, "assets": assets}
 
 
+def _summarize_structure_node(state: DocumentState) -> DocumentState:
+    sections = state.get("sections", [])
+    outline = _build_outline(sections)
+    return {"outline": outline}
+
+
 def _extract_knowledge_node(state: DocumentState, llm: MarkdownGenerator) -> DocumentState:
     sections = state.get("sections", [])
-    knowledge = _extract_all_knowledge(llm, sections)
+    outline = state.get("outline") or None
+    knowledge = _extract_all_knowledge(llm, sections, outline)
     return {"knowledge_items": knowledge}
 
 
@@ -62,7 +70,17 @@ def _compose_markdown_node(state: DocumentState, llm: MarkdownGenerator) -> Docu
     metadata = state["metadata"]
     knowledge = state.get("knowledge_items", [])
     relations = state.get("relationships", [])
-    markdown = llm.compose_markdown(metadata, knowledge, relations)
+    sections = state.get("sections", [])
+    outline = state.get("outline") or None
+    assets = state.get("assets", [])
+    markdown = llm.compose_markdown(
+        metadata,
+        knowledge,
+        relations,
+        sections=sections,
+        outline=outline,
+        assets=assets,
+    )
     return {"markdown": markdown}
 
 
@@ -82,6 +100,7 @@ def _persist_markdown(state: DocumentState) -> DocumentState:
         },
         "sections": [section.to_dict() for section in state.get("sections", [])],
         "assets": [asset.to_dict() for asset in state.get("assets", [])],
+        "outline": state.get("outline"),
         "knowledge": [item.to_dict() for item in state.get("knowledge_items", [])],
         "relationships": [edge.to_dict() for edge in state.get("relationships", [])],
         "validation": {
@@ -102,10 +121,14 @@ def _validate_output(state: DocumentState) -> DocumentState:
     return {"report": report}
 
 
-def _extract_all_knowledge(llm: MarkdownGenerator, sections: List[SectionChunk]) -> List[KnowledgeUnit]:
+def _extract_all_knowledge(
+    llm: MarkdownGenerator,
+    sections: List[SectionChunk],
+    outline: str | None,
+) -> List[KnowledgeUnit]:
     knowledge: List[KnowledgeUnit] = []
     for section in sections:
-        knowledge.extend(llm.extract_knowledge(section))
+        knowledge.extend(llm.extract_knowledge(section, outline=outline))
     return knowledge
 
 
@@ -143,7 +166,9 @@ def _extract_sections_and_assets(html: str) -> Tuple[List[SectionChunk], List[As
         return order
 
     order = 1
-    for element in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "table"]):
+    for element in soup.find_all(
+        ["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "table", "pre", "code"]
+    ):
         if element.name and element.name.startswith("h"):
             order = flush(order)
             current_heading = element.get_text(" ", strip=True)
@@ -176,7 +201,23 @@ def _extract_sections_and_assets(html: str) -> Tuple[List[SectionChunk], List[As
 def _element_text(element: Tag) -> str:
     if element.name == "table":
         return _table_to_markdown(element)
+    if element.name in {"pre", "code"}:
+        return f"```\n{element.get_text()}\n```"
     return element.get_text(" ", strip=True)
+
+
+def _build_outline(sections: List[SectionChunk]) -> str:
+    if not sections:
+        return ""
+    lines: List[str] = []
+    for section in sections:
+        heading = section.heading or "(無題セクション)"
+        indent = "  " * max(section.level - 1, 0)
+        preview = section.body.strip().splitlines()
+        first_line = preview[0][:80] if preview else ""
+        suffix = f" - {first_line}" if first_line else ""
+        lines.append(f"{indent}- {heading}{suffix}")
+    return "\n".join(lines)
 
 
 def _table_to_markdown(table: Tag) -> str:
@@ -217,6 +258,7 @@ def build_pipeline(llm: MarkdownGenerator):
     graph = StateGraph(DocumentState)
     graph.add_node("load_html", _load_html)
     graph.add_node("parse_html", _parse_html)
+    graph.add_node("summarize_structure", _summarize_structure_node)
     graph.add_node("extract_knowledge", lambda state: _extract_knowledge_node(state, llm))
     graph.add_node("link_relations", lambda state: _link_relations_node(state, llm))
     graph.add_node("compose_markdown", lambda state: _compose_markdown_node(state, llm))
@@ -225,7 +267,8 @@ def build_pipeline(llm: MarkdownGenerator):
 
     graph.add_edge(START, "load_html")
     graph.add_edge("load_html", "parse_html")
-    graph.add_edge("parse_html", "extract_knowledge")
+    graph.add_edge("parse_html", "summarize_structure")
+    graph.add_edge("summarize_structure", "extract_knowledge")
     graph.add_edge("extract_knowledge", "link_relations")
     graph.add_edge("link_relations", "compose_markdown")
     graph.add_edge("compose_markdown", "validate_output")
