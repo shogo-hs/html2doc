@@ -39,7 +39,7 @@ files:
 ## 実装状況メモ（2025-11-13）
 - `src/html2doc/config.py`: YAML 読み込みとバリデーション。`files[*].input` を絶対パスへ解決し、`output.dir` の指定がなければ設定ファイル直下の `output/` を使う。
 - `src/html2doc/llm.py`: `MarkdownGenerator` が `OPENAI_API_KEY` を検証し、ナレッジ抽出 (`extract_knowledge`)、関係推定 (`link_relations`)、Markdown 合成 (`compose_markdown`) を担う。
-- `src/html2doc/graph.py`: LangGraph StateGraph で `load_html → parse_html → extract_knowledge → link_relations → compose_markdown → validate_output → persist_markdown` を構築。
+- `src/html2doc/graph.py`: LangGraph StateGraph で `load_html → parse_html → extract_knowledge → link_relations → compose_markdown → check_hallucination → validate_output → persist_markdown` を構築。
 - `src/html2doc/runner.py`: 設定ファイルを読み込み、各 HTML を順次 LangGraph に流して結果を収集する。
 - `src/html2doc/cli.py`: `html2doc run --config <path>` を提供し、処理結果を色付きで表示する。
 - `output/<stem>.json`: Markdown と同時に保存されるナレッジグラフ。セクション構造・アセット・ナレッジ・関係・バリデーション結果を含む。

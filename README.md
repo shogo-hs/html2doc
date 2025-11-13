@@ -46,8 +46,9 @@ LangGraph と OpenAI を使い、ローカルにある HTML 応対マニュア�
    ```
 
 ## 主な機能
-- LangGraph StateGraph で `load_html → parse_html → extract_knowledge → link_relations → compose_markdown → validate_output → persist_markdown` を順次実行。
+- LangGraph StateGraph で `load_html → parse_html → extract_knowledge → link_relations → compose_markdown → check_hallucination → validate_output → persist_markdown` を順次実行。
 - BeautifulSoup で HTML をセクション・アセット単位に分解し、OpenAI `gpt-4.1-mini` でナレッジ抽出・関係推定・Markdown 合成を行う。
+- 生成結果に対して LLM ベースのハルシネーション検知を行い、ソースに存在しない記述を捕捉した場合は検証フェーズで失敗させる。
 - 生成した Markdown とあわせて、ナレッジグラフ（sections / knowledge / relationships / validation）を `<stem>.json` として保存。
 - HTML ファイル名の stem をそのまま出力名に採用し、`output/<stem>.md` + `output/<stem>.json` を生成。
 - 失敗があっても他ファイルの処理を継続し、成功/失敗サマリを CLI に表示。

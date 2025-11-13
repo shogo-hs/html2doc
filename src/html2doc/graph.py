@@ -33,6 +33,7 @@ class DocumentState(TypedDict, total=False):
     report: ValidationReport
     output_path: str
     graph_path: str
+    hallucination_issues: List[str]
 
 
 def _load_html(state: DocumentState) -> DocumentState:
@@ -84,6 +85,15 @@ def _compose_markdown_node(state: DocumentState, llm: MarkdownGenerator) -> Docu
     return {"markdown": markdown}
 
 
+def _check_hallucination_node(state: DocumentState, llm: MarkdownGenerator) -> DocumentState:
+    markdown = state.get("markdown")
+    if not markdown:
+        return {}
+    sections = state.get("sections", [])
+    issues = llm.check_factual_consistency(markdown, sections)
+    return {"hallucination_issues": issues}
+
+
 def _persist_markdown(state: DocumentState) -> DocumentState:
     metadata = state["metadata"]
     markdown = state["markdown"]
@@ -106,6 +116,7 @@ def _persist_markdown(state: DocumentState) -> DocumentState:
         "validation": {
             "valid": report.valid if report else True,
             "issues": report.issues if report else [],
+            "hallucinations": report.hallucination_flags if report else [],
         },
     }
     graph_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -115,6 +126,11 @@ def _persist_markdown(state: DocumentState) -> DocumentState:
 def _validate_output(state: DocumentState) -> DocumentState:
     markdown = state["markdown"]
     report = _validate_markdown(markdown, state.get("knowledge_items", []))
+    hallucination_issues = state.get("hallucination_issues", [])
+    if hallucination_issues:
+        report.hallucination_flags = hallucination_issues
+        report.issues.extend(f"ハルシネーション疑い: {issue}" for issue in hallucination_issues)
+        report.valid = False
     if not report.valid:
         issues = " / ".join(report.issues)
         raise ValueError(f"Markdown 検証に失敗しました: {issues}")
@@ -262,6 +278,7 @@ def build_pipeline(llm: MarkdownGenerator):
     graph.add_node("extract_knowledge", lambda state: _extract_knowledge_node(state, llm))
     graph.add_node("link_relations", lambda state: _link_relations_node(state, llm))
     graph.add_node("compose_markdown", lambda state: _compose_markdown_node(state, llm))
+    graph.add_node("check_hallucination", lambda state: _check_hallucination_node(state, llm))
     graph.add_node("validate_output", _validate_output)
     graph.add_node("persist_markdown", _persist_markdown)
 
@@ -271,7 +288,8 @@ def build_pipeline(llm: MarkdownGenerator):
     graph.add_edge("summarize_structure", "extract_knowledge")
     graph.add_edge("extract_knowledge", "link_relations")
     graph.add_edge("link_relations", "compose_markdown")
-    graph.add_edge("compose_markdown", "validate_output")
+    graph.add_edge("compose_markdown", "check_hallucination")
+    graph.add_edge("check_hallucination", "validate_output")
     graph.add_edge("validate_output", "persist_markdown")
     graph.add_edge("persist_markdown", END)
 

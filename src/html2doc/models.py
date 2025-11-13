@@ -137,6 +137,7 @@ class ValidationReport:
 
     valid: bool
     issues: List[str] = field(default_factory=list)
+    hallucination_flags: List[str] = field(default_factory=list)
 
 
 __all__ = [
