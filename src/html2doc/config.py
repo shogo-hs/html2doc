@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, List, Optional
 
+import os
 import yaml
 
 
@@ -16,7 +17,7 @@ class ConfigError(Exception):
 class ModelConfig:
     """LLM 利用パラメータ。"""
 
-    name: str = "gpt-4.1-mini"
+    name: str = os.getenv("HTML2DOC_MODEL", "gpt-4.1-mini")
     temperature: float = 0.1
     top_p: Optional[float] = None
     max_output_tokens: Optional[int] = None

@@ -3,14 +3,12 @@
 LangGraph と OpenAI を使い、ローカルにある HTML 応対マニュアルを Markdown へ変換する CLI ツールです。
 
 ## セットアップ
-1. 依存インストール: `uv sync`
-2. 以降のコマンドは `uv run ...` で実行します（例: `uv run html2doc --help`）。
+1. `.env.example` をコピーして `.env` を作成し、`OPENAI_API_KEY`（必要に応じて `HTML2DOC_MODEL`）を設定します。
+2. 依存インストール: `uv sync`
+3. 以降のコマンドは `uv run ...` で実行します（例: `uv run html2doc --help`）。
 
 ## 使い方
-1. OpenAI API キーを環境変数に設定します。
-   ```bash
-   export OPENAI_API_KEY="sk-..."
-   ```
+1. `.env` で設定した OpenAI API キーが読み込まれていることを確認します（CLI 起動時に自動で読み込まれます）。
 2. 変換対象を YAML ファイルに記述します。
    ```yaml
    model:
@@ -20,8 +18,9 @@ LangGraph と OpenAI を使い、ローカルにある HTML 応対マニュア�
      - input: data/manual_a.html
        title: "Aマニュアル"
        context: "VIP 顧客向けハンドブック"
-     - input: data/manual_b.html
-   ```
+   - input: data/manual_b.html
+  ```
+   モデル名を YAML に書かない場合は、`.env` の `HTML2DOC_MODEL` もしくは既定値 `gpt-4.1-mini` が利用されます。
    もしくは、モデル設定などを `config.yaml` に記述しつつ、HTML ファイルの一覧だけを別 YAML (`inputs.yaml`) にまとめることもできます。
    ```yaml
    # config.yaml
@@ -58,5 +57,5 @@ LangGraph と OpenAI を使い、ローカルにある HTML 応対マニュア�
 - `output/<stem>.json`: セクション構成・抽出ナレッジ・関係エッジ・検証結果を含む補助ファイル（RAG のインデックス投入を想定）。
 
 ## トラブルシューティング
-- `OPENAI_API_KEY` 未設定: CLI が即座にエラー終了します。環境変数を確認してください。
+- `OPENAI_API_KEY` 未設定: CLI が即座にエラー終了します。`.env` もしくは環境変数を確認してください。
 - YAML 形式エラー: エラーメッセージに該当箇所が表示されます。`files` が配列か、`input` が存在するかをご確認ください。
