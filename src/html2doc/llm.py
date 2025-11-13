@@ -137,6 +137,51 @@ class MarkdownGenerator:
         text = self._run_request(messages)
         return text.strip()
 
+    def check_factual_consistency(
+        self, markdown: str, sections: Optional[List[SectionChunk]]
+    ) -> List[str]:
+        """生成結果が HTML ソースと矛盾していないかを検査する。"""
+
+        if not markdown.strip():
+            return []
+        section_fragments = [section.to_prompt_fragment() for section in sections or []]
+        if not section_fragments:
+            return []
+        reference_text = "\n\n".join(section_fragments[:30])
+        instructions = (
+            "あなたはコールセンターマニュアルの品質検査官です。"
+            " 参照セクションと生成済み Markdown を比較し、ソースに存在しない記述や矛盾を JSON 配列で返してください。"
+            " 各要素は {statement, reason} を含み、不要であれば空配列 [] を返します。"
+        )
+        user_prompt = (
+            "### 参照セクション\n"
+            f"{reference_text}\n\n"
+            "### 生成された Markdown\n"
+            f"{markdown}"
+        )
+        messages = [
+            {"role": "system", "content": [{"type": "text", "text": instructions}]},
+            {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+        ]
+        text = self._run_request(messages, max_output_tokens=600)
+        data = self._parse_json(text)
+        issues: List[str] = []
+        for item in data:
+            if isinstance(item, str):
+                normalized = item.strip()
+                if normalized:
+                    issues.append(normalized)
+                continue
+            statement = str(item.get("statement", "")).strip()
+            reason = str(item.get("reason", "")).strip()
+            if statement and reason:
+                issues.append(f"{statement} (理由: {reason})")
+            elif statement:
+                issues.append(statement)
+            elif reason:
+                issues.append(reason)
+        return issues
+
     def _messages_for_markdown(self, metadata: DocumentMetadata, html: str) -> List[Dict[str, object]]:
         instructions = (
             "あなたはカスタマーサポート向けの応対マニュアルを Markdown に整理する専門家です。"
