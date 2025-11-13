@@ -4,12 +4,12 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Dict, Iterable, List
+from typing import Dict, List, Optional
 
 from openai import OpenAI
 
 from .config import ModelConfig
-from .models import DocumentMetadata, KnowledgeUnit, RelationEdge, SectionChunk
+from .models import Asset, DocumentMetadata, KnowledgeUnit, RelationEdge, SectionChunk
 
 
 class MarkdownGenerator:
@@ -31,7 +31,7 @@ class MarkdownGenerator:
         text = self._run_request(messages)
         return text.strip()
 
-    def extract_knowledge(self, section: SectionChunk) -> List[KnowledgeUnit]:
+    def extract_knowledge(self, section: SectionChunk, *, outline: Optional[str] = None) -> List[KnowledgeUnit]:
         """セクションからナレッジ単位を抽出する。"""
 
         instructions = (
@@ -41,15 +41,22 @@ class MarkdownGenerator:
             " JSON 以外の文字は含めないでください。"
         )
         section_text = section.to_prompt_fragment()
+        context_snippets = []
+        if outline:
+            context_snippets.append(f"ドキュメント全体の構成:\n{outline}")
         messages = [
             {"role": "system", "content": [{"type": "text", "text": instructions}]},
             {
                 "role": "user",
                 "content": [
+                    *(
+                        {"type": "text", "text": snippet}
+                        for snippet in context_snippets
+                    ),
                     {
                         "type": "text",
                         "text": f"セクション {section.identifier}:\n{section_text}",
-                    }
+                    },
                 ],
             },
         ]
@@ -95,6 +102,10 @@ class MarkdownGenerator:
         metadata: DocumentMetadata,
         knowledge: List[KnowledgeUnit],
         relations: List[RelationEdge],
+        *,
+        sections: Optional[List[SectionChunk]] = None,
+        outline: Optional[str] = None,
+        assets: Optional[List[Asset]] = None,
     ) -> str:
         """ナレッジと関係グラフから最終 Markdown を生成する。"""
 
@@ -103,6 +114,7 @@ class MarkdownGenerator:
             " 提供されたナレッジを章立てして、わかりやすい応対マニュアルを作成してください。"
             " # タイトル で始め、要約、詳細手順、関連リンクセクションを含めます。"
             " 関係情報をもとに関連する手順同士を参照で結び付けてください。"
+            " 文書全体のアウトラインや付属アセット（画像など）があれば適宜参照し、操作手順を詳述してください。"
         )
         payload = json.dumps(
             {
@@ -112,6 +124,9 @@ class MarkdownGenerator:
                 },
                 "knowledge": [item.to_dict() for item in knowledge],
                 "relations": [edge.to_dict() for edge in relations],
+                "sections": [section.to_dict() for section in sections or []],
+                "outline": outline,
+                "assets": [asset.to_dict() for asset in assets or []],
             },
             ensure_ascii=False,
         )
