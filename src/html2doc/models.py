@@ -139,9 +139,28 @@ class ValidationReport:
     issues: List[str] = field(default_factory=list)
 
 
+@dataclass(slots=True)
+class HallucinationReport:
+    """LLM 生成物のハルシネーション検出結果。"""
+
+    safe: bool
+    risk_score: float
+    reasons: List[str] = field(default_factory=list)
+    unsupported_passages: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "safe": self.safe,
+            "risk_score": self.risk_score,
+            "reasons": self.reasons,
+            "unsupported_passages": self.unsupported_passages,
+        }
+
+
 __all__ = [
     "Asset",
     "DocumentMetadata",
+    "HallucinationReport",
     "KnowledgeUnit",
     "RelationEdge",
     "SectionChunk",

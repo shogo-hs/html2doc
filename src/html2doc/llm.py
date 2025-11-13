@@ -4,12 +4,18 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Dict, Iterable, List
+from typing import Any, Dict, List
 
 from openai import OpenAI
 
 from .config import ModelConfig
-from .models import DocumentMetadata, KnowledgeUnit, RelationEdge, SectionChunk
+from .models import (
+    DocumentMetadata,
+    HallucinationReport,
+    KnowledgeUnit,
+    RelationEdge,
+    SectionChunk,
+)
 
 
 class MarkdownGenerator:
@@ -36,7 +42,8 @@ class MarkdownGenerator:
 
         instructions = (
             "あなたはコールセンター向けマニュアル編集者です。"
-            " 以下のセクションを読んで、ユーザー対応に使える知識を JSON 配列で返してください。"
+            " 以下のセクションだけを根拠に、ユーザー対応に使える知識を JSON 配列で返してください。"
+            " 情報源に存在しない推測や一般論は書かないでください。"
             " 各要素は {id,title,summary,steps,prerequisites,related_queries,tags,source_section} を含めます。"
             " JSON 以外の文字は含めないでください。"
         )
@@ -100,9 +107,10 @@ class MarkdownGenerator:
 
         instructions = (
             "あなたは Markdown ドキュメント生成の専門家です。"
-            " 提供されたナレッジを章立てして、わかりやすい応対マニュアルを作成してください。"
+            " 提供されたナレッジのみを根拠に章立てして、わかりやすい応対マニュアルを作成してください。"
             " # タイトル で始め、要約、詳細手順、関連リンクセクションを含めます。"
             " 関係情報をもとに関連する手順同士を参照で結び付けてください。"
+            " 出典に存在しない情報や推測は禁止とし、不足があればその旨を明記してください。"
         )
         payload = json.dumps(
             {
@@ -122,10 +130,57 @@ class MarkdownGenerator:
         text = self._run_request(messages)
         return text.strip()
 
+    def review_markdown(
+        self,
+        metadata: DocumentMetadata,
+        knowledge: List[KnowledgeUnit],
+        markdown: str,
+    ) -> HallucinationReport:
+        """生成済み Markdown のハルシネーション有無をチェックする。"""
+
+        instructions = (
+            "あなたは応対マニュアルの品質監査官です。"
+            " 提供された Markdown が渡されたナレッジと文脈のみを根拠にしているか検証してください。"
+            " 根拠が確認できない記述があれば必ず指摘し、JSON オブジェクトで返してください。"
+            " 出力フォーマット: {safe:boolean,risk_score:number,reasons:[],unsupported_passages:[]}"
+            " risk_score は 0 (危険)〜1 (安全) の範囲で設定してください。"
+        )
+        payload = json.dumps(
+            {
+                "metadata": {
+                    "title": metadata.title or metadata.stem,
+                    "context": metadata.context,
+                },
+                "knowledge": [item.to_dict() for item in knowledge],
+                "markdown": markdown,
+            },
+            ensure_ascii=False,
+        )
+        messages = [
+            {"role": "system", "content": [{"type": "text", "text": instructions}]},
+            {"role": "user", "content": [{"type": "text", "text": payload}]},
+        ]
+        text = self._run_request(messages, temperature=0)
+        data = self._parse_json_object(text)
+        safe = bool(data.get("safe"))
+        try:
+            risk_score = float(data.get("risk_score", 0.0 if not safe else 1.0))
+        except (TypeError, ValueError):
+            risk_score = 0.0 if not safe else 1.0
+        reasons = [str(item) for item in data.get("reasons", []) if item]
+        unsupported = [str(item) for item in data.get("unsupported_passages", []) if item]
+        return HallucinationReport(
+            safe=safe,
+            risk_score=risk_score,
+            reasons=reasons,
+            unsupported_passages=unsupported,
+        )
+
     def _messages_for_markdown(self, metadata: DocumentMetadata, html: str) -> List[Dict[str, object]]:
         instructions = (
             "あなたはカスタマーサポート向けの応対マニュアルを Markdown に整理する専門家です。"
             " HTML の構造を保持しつつ、日本語で丁寧にまとめてください。"
+            " HTML に含まれない情報や推測は書かず、不足があれば『情報不足』と記述してください。"
         )
         header_lines = [
             f"入力ファイル: {metadata.input_path}",
@@ -166,6 +221,23 @@ class MarkdownGenerator:
         if isinstance(parsed, dict):
             return [parsed]
         raise ValueError("LLM からの JSON 応答が不正です。")
+
+    def _parse_json_object(self, text: str) -> Dict[str, Any]:
+        cleaned = text.strip()
+        if cleaned.startswith("```"):
+            cleaned = re.sub(r"^```(?:json)?", "", cleaned, count=1).strip()
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3].strip()
+        if not cleaned:
+            return {}
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, dict):
+            return parsed
+        if isinstance(parsed, list) and parsed:
+            first = parsed[0]
+            if isinstance(first, dict):
+                return first
+        raise ValueError("LLM からの JSON オブジェクト応答が不正です。")
 
     def _build_request_kwargs(self) -> Dict[str, object]:
         kwargs: Dict[str, object] = {}

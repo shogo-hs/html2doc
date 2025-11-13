@@ -8,7 +8,7 @@ from typing import List, Optional
 from .config import FileConfig, load_config
 from .graph import build_pipeline
 from .llm import MarkdownGenerator
-from .models import DocumentMetadata, ValidationReport
+from .models import DocumentMetadata, HallucinationReport, ValidationReport
 
 
 @dataclass(slots=True)
@@ -20,6 +20,7 @@ class DocumentResult:
     output_path: Optional[Path] = None
     graph_path: Optional[Path] = None
     report: Optional[ValidationReport] = None
+    hallucination_report: Optional[HallucinationReport] = None
     error: Optional[str] = None
 
 
@@ -59,6 +60,7 @@ def run(config_path: Path, *, output_override: Optional[Path] = None) -> List[Do
                     output_path=output_path,
                     graph_path=graph_path,
                     report=final_state.get("report"),
+                    hallucination_report=final_state.get("hallucination_report"),
                 )
             )
         except Exception as exc:  # pragma: no cover - 外部 API 依存

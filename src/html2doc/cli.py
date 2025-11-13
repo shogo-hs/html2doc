@@ -35,7 +35,19 @@ def run_command(
             msg = f"[OK] {item.metadata.input_path} -> {item.output_path}"
             if item.graph_path:
                 msg += f" (graph: {item.graph_path})"
+            if item.hallucination_report:
+                msg += f" [安全度: {item.hallucination_report.risk_score:.2f}]"
             typer.secho(msg, fg=typer.colors.GREEN)
+            if (
+                item.hallucination_report
+                and item.hallucination_report.risk_score < 0.8
+                and item.hallucination_report.reasons
+            ):
+                detail = " / ".join(item.hallucination_report.reasons[:3])
+                typer.secho(
+                    f"    ハルシネーション注意: {detail}",
+                    fg=typer.colors.YELLOW,
+                )
         else:
             typer.secho(
                 f"[NG] {item.metadata.input_path}: {item.error}",
