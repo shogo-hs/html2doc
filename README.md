@@ -22,9 +22,26 @@ LangGraph と OpenAI を使い、ローカルにある HTML 応対マニュア�
        context: "VIP 顧客向けハンドブック"
      - input: data/manual_b.html
    ```
+   もしくは、モデル設定などを `config.yaml` に記述しつつ、HTML ファイルの一覧だけを別 YAML (`inputs.yaml`) にまとめることもできます。
+   ```yaml
+   # config.yaml
+   model:
+     name: gpt-4.1-mini
+   output:
+     dir: output
+   ```
+
+   ```yaml
+   # inputs.yaml
+   - data/manual_a.html
+   - input: data/manual_b.html
+     title: "Bマニュアル"
+   ```
 3. CLI を実行します（出力先は既定で `output/`）。
    ```bash
    uv run html2doc run --config config.yaml
+   # ファイル一覧を別 YAML で渡す場合
+   uv run html2doc run --config config.yaml --inputs inputs.yaml
    # 任意で出力先を指定
    uv run html2doc run --config config.yaml --output-dir build/output
    ```

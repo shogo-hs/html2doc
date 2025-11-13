@@ -16,11 +16,16 @@ app = typer.Typer(help="HTML 応対マニュアルを LangGraph + OpenAI で Mar
 def run_command(
     config: Path = typer.Option(..., "--config", "-c", help="変換対象を記述した YAML ファイルへのパス"),
     output_dir: Optional[Path] = typer.Option(None, "--output-dir", help="出力先ディレクトリ（省略時は設定ファイルに従う）"),
+    input_list: Optional[Path] = typer.Option(
+        None,
+        "--inputs",
+        help="HTML ファイルのパスを列挙した YAML ファイル。`files` セクションと併用可能",
+    ),
 ) -> None:
     """設定ファイルをもとに変換を実行する。"""
 
     try:
-        results = run(config, output_override=output_dir)
+        results = run(config, output_override=output_dir, input_list=input_list)
     except ConfigError as exc:
         typer.secho(f"設定エラー: {exc}", fg=typer.colors.RED)
         raise typer.Exit(code=1) from exc
