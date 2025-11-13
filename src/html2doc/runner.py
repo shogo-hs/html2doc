@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from .config import FileConfig, load_config
+from .config import ConfigError, FileConfig, load_config, load_file_list
 from .graph import build_pipeline
 from .llm import MarkdownGenerator
 from .models import DocumentMetadata, ValidationReport
@@ -23,10 +23,20 @@ class DocumentResult:
     error: Optional[str] = None
 
 
-def run(config_path: Path, *, output_override: Optional[Path] = None) -> List[DocumentResult]:
+def run(
+    config_path: Path,
+    *,
+    output_override: Optional[Path] = None,
+    input_list: Optional[Path] = None,
+) -> List[DocumentResult]:
     """設定ファイルを読み込み、LangGraph パイプラインを実行する。"""
 
-    config = load_config(config_path)
+    config = load_config(config_path, allow_empty_files=input_list is not None)
+    if input_list:
+        extra_files = load_file_list(input_list)
+        config.files = [*config.files, *extra_files]
+    if not config.files:
+        raise ConfigError("`files` または --inputs には 1 件以上のエントリーが必要です。")
     if output_override:
         config.output_dir = output_override.resolve()
     output_dir = config.ensure_output_dir()

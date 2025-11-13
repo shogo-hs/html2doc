@@ -62,7 +62,7 @@ def _resolve_path(raw_path: str | Path, base_dir: Path) -> Path:
 _DEFAULT_MODEL = ModelConfig()
 
 
-def load_config(path: str | Path) -> AppConfig:
+def load_config(path: str | Path, *, allow_empty_files: bool = False) -> AppConfig:
     """YAML 設定ファイルを読み込み `AppConfig` を返す。"""
 
     config_path = Path(path).resolve()
@@ -90,7 +90,7 @@ def load_config(path: str | Path) -> AppConfig:
     )
 
     raw_files = _ensure_list(raw.get("files"), field_name="files") if "files" in raw else []
-    if not raw_files:
+    if not raw_files and not allow_empty_files:
         raise ConfigError("`files` には 1 件以上のエントリーが必要です。")
 
     files: List[FileConfig] = []
@@ -116,10 +116,62 @@ def load_config(path: str | Path) -> AppConfig:
     return config
 
 
+def load_file_list(path: str | Path) -> List[FileConfig]:
+    """`files` セクションのみを切り出した YAML から `FileConfig` の配列を生成する。"""
+
+    list_path = Path(path).resolve()
+    if not list_path.exists():
+        raise ConfigError(f"ファイルリストが見つかりません: {list_path}")
+
+    with list_path.open("r", encoding="utf-8") as file:
+        try:
+            raw = yaml.safe_load(file) or []
+        except yaml.YAMLError as exc:  # pragma: no cover - I/O 依存
+            raise ConfigError("ファイルリストの読み込みに失敗しました。") from exc
+
+    if isinstance(raw, dict):
+        if "files" not in raw:
+            raise ConfigError("ファイルリストの YAML は配列、または `files` キーを含む必要があります。")
+        raw_entries = _ensure_list(raw["files"], field_name="files")
+    else:
+        raw_entries = _ensure_list(raw, field_name="files")
+
+    if not raw_entries:
+        raise ConfigError("ファイルリストに 1 件以上のエントリーを記載してください。")
+
+    base_dir = list_path.parent
+    files: List[FileConfig] = []
+    for idx, entry in enumerate(raw_entries, start=1):
+        if isinstance(entry, (str, Path)):
+            input_value = entry
+            title = None
+            context = None
+        elif isinstance(entry, dict):
+            if "input" not in entry:
+                raise ConfigError(f"files[{idx}] に `input` がありません。")
+            input_value = entry["input"]
+            title = entry.get("title")
+            context = entry.get("context")
+        else:
+            raise ConfigError(f"files[{idx}] は文字列、または `input` を含むマッピングで指定してください。")
+
+        resolved_input = _resolve_path(input_value, base_dir)
+        files.append(
+            FileConfig(
+                input=resolved_input,
+                title=title,
+                context=context,
+            )
+        )
+
+    return files
+
+
 __all__ = [
     "AppConfig",
     "ConfigError",
     "FileConfig",
     "ModelConfig",
     "load_config",
+    "load_file_list",
 ]
