@@ -1,0 +1,23 @@
+[project]
+name = "html2doc"
+version = "0.1.0"
+description = "LangGraph + OpenAI で HTML マニュアルを Markdown 化する CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "beautifulsoup4>=4.12.3",
+    "langgraph>=0.2.39",
+    "openai>=1.51.0",
+    "pyyaml>=6.0.2",
+    "typer>=0.12.5",
+]
+
+[project.scripts]
+html2doc = "html2doc.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = true
