@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 from langgraph.graph import END, START, StateGraph
 
+from .errors import HallucinationError
 from .llm import MarkdownGenerator
 from .models import (
     Asset,
@@ -74,10 +75,7 @@ def _hallucination_check_node(state: DocumentState, llm: MarkdownGenerator) -> D
     knowledge = state.get("knowledge_items", [])
     report = llm.review_markdown(metadata, knowledge, markdown)
     if not report.safe:
-        details = " / ".join(report.reasons or report.unsupported_passages)
-        raise ValueError(
-            f"ハルシネーション検出: {details or '根拠が確認できない記述が含まれます。'}"
-        )
+        raise HallucinationError(report)
     return {"hallucination_report": report}
 
 

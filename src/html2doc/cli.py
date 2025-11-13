@@ -53,6 +53,16 @@ def run_command(
                 f"[NG] {item.metadata.input_path}: {item.error}",
                 fg=typer.colors.RED,
             )
+            if item.hallucination_report:
+                reasons = item.hallucination_report.reasons or item.hallucination_report.unsupported_passages
+                detail = " / ".join(reasons[:3]) if reasons else "根拠が不足している箇所があります。"
+                typer.secho(
+                    (
+                        "    ハルシネーション検出"
+                        f" (安全度: {item.hallucination_report.risk_score:.2f}): {detail}"
+                    ),
+                    fg=typer.colors.RED,
+                )
 
     typer.echo(f"成功 {success} 件 / 失敗 {failure} 件")
     if failure:

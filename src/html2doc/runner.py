@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from .config import FileConfig, load_config
+from .errors import HallucinationError
 from .graph import build_pipeline
 from .llm import MarkdownGenerator
 from .models import DocumentMetadata, HallucinationReport, ValidationReport
@@ -61,6 +62,15 @@ def run(config_path: Path, *, output_override: Optional[Path] = None) -> List[Do
                     graph_path=graph_path,
                     report=final_state.get("report"),
                     hallucination_report=final_state.get("hallucination_report"),
+                )
+            )
+        except HallucinationError as exc:
+            results.append(
+                DocumentResult(
+                    metadata=metadata,
+                    success=False,
+                    hallucination_report=exc.report,
+                    error=str(exc),
                 )
             )
         except Exception as exc:  # pragma: no cover - 外部 API 依存
