@@ -9,38 +9,29 @@ LangGraph と OpenAI を使い、ローカルにある HTML 応対マニュア�
 
 ## 使い方
 1. `.env` で設定した OpenAI API キーが読み込まれていることを確認します（CLI 起動時に自動で読み込まれます）。
-2. 変換対象を YAML ファイルに記述します。
+2. 共通設定 (`config.yaml`) を作成します。通常はモデル指定と出力ディレクトリのみで十分です。
    ```yaml
    model:
      name: gpt-4.1-mini
      temperature: 0.1
-   files:
-     - input: data/manual_a.html
-       title: "Aマニュアル"
-       context: "VIP 顧客向けハンドブック"
-   - input: data/manual_b.html
-  ```
-   モデル名を YAML に書かない場合は、`.env` の `HTML2DOC_MODEL` もしくは既定値 `gpt-4.1-mini` が利用されます。
-   もしくは、モデル設定などを `config.yaml` に記述しつつ、HTML ファイルの一覧だけを別 YAML (`inputs.yaml`) にまとめることもできます。
-   ```yaml
-   # config.yaml
-   model:
-     name: gpt-4.1-mini
    output:
-     dir: output
+     dir: ./outputs
    ```
-
+3. 変換対象リスト (`inputs.yaml`) を記述します。`output` フィールドを指定すると出力ファイル名（または `output.dir` 配下の相対パス）を任意に設定できます。
    ```yaml
-   # inputs.yaml
-   - data/manual_a.html
+   - input: data/manual_a.html
+     title: "Aマニュアル"
+     context: "VIP 顧客向けハンドブック"
+     output: vip-guide.md
    - input: data/manual_b.html
-     title: "Bマニュアル"
+     output: branch/b_manual.md
+   - data/manual_c.html  # 文字列だけでも指定可能（出力は c.md）
    ```
-3. CLI を実行します（出力先は既定で `output/`）。
+4. CLI を実行します（出力先は `config.yaml` で指定した `output.dir`）。
    ```bash
-   uv run html2doc run --config config.yaml
-   # ファイル一覧を別 YAML で渡す場合
    uv run html2doc run --config config.yaml --inputs inputs.yaml
+   # `config.yaml` に files を直接書いた場合
+   uv run html2doc run --config config.yaml
    # 任意で出力先を指定
    uv run html2doc run --config config.yaml --output-dir build/output
    ```

@@ -30,6 +30,7 @@ class FileConfig:
     input: Path
     title: Optional[str] = None
     context: Optional[str] = None
+    output: Optional[str] = None
 
 
 @dataclass(slots=True)
@@ -106,6 +107,7 @@ def load_config(path: str | Path, *, allow_empty_files: bool = False) -> AppConf
                 input=resolved_input,
                 title=entry.get("title"),
                 context=entry.get("context"),
+                output=str(entry["output"]) if entry.get("output") else None,
             )
         )
 
@@ -153,6 +155,7 @@ def load_file_list(path: str | Path) -> List[FileConfig]:
             input_value = entry["input"]
             title = entry.get("title")
             context = entry.get("context")
+            output = str(entry["output"]) if entry.get("output") else None
         else:
             raise ConfigError(f"files[{idx}] は文字列、または `input` を含むマッピングで指定してください。")
 
@@ -162,6 +165,7 @@ def load_file_list(path: str | Path) -> List[FileConfig]:
                 input=resolved_input,
                 title=title,
                 context=context,
+                output=output,
             )
         )
 

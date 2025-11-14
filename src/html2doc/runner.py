@@ -38,11 +38,11 @@ def run(
     if not config.files:
         raise ConfigError("`files` または --inputs には 1 件以上のエントリーが必要です。")
 
-    _ensure_unique_output_stems(config.files)
-
     if output_override:
         config.output_dir = output_override.resolve()
     output_dir = config.ensure_output_dir()
+
+    _ensure_unique_output_paths(config.files, output_dir)
 
     llm = MarkdownGenerator(config.model)
     pipeline = build_pipeline(llm)
@@ -87,8 +87,7 @@ def run(
 
 
 def _build_metadata(file_cfg: FileConfig, output_dir: Path) -> DocumentMetadata:
-    stem = file_cfg.input.stem
-    output_path = output_dir / f"{stem}.md"
+    output_path = _resolve_output_path(file_cfg, output_dir)
     return DocumentMetadata(
         input_path=file_cfg.input,
         output_path=output_path,
@@ -97,25 +96,32 @@ def _build_metadata(file_cfg: FileConfig, output_dir: Path) -> DocumentMetadata:
     )
 
 
-def _ensure_unique_output_stems(files: Iterable[FileConfig]) -> None:
-    """stem が重複する入力ファイルを検出してエラーにする。"""
+def _resolve_output_path(file_cfg: FileConfig, output_dir: Path) -> Path:
+    """ファイル設定から最終出力パスを算出する。"""
 
-    collisions: dict[str, list[Path]] = {}
+    if file_cfg.output:
+        candidate = Path(file_cfg.output)
+        return candidate if candidate.is_absolute() else (output_dir / candidate).resolve()
+    return (output_dir / f"{file_cfg.input.stem}.md").resolve()
+
+
+def _ensure_unique_output_paths(files: Iterable[FileConfig], output_dir: Path) -> None:
+    """最終的に生成される出力パスの重複を検出する。"""
+
+    collisions: dict[Path, list[Path]] = {}
     for file_cfg in files:
-        stem = file_cfg.input.stem
-        collisions.setdefault(stem, []).append(file_cfg.input)
+        resolved = _resolve_output_path(file_cfg, output_dir)
+        collisions.setdefault(resolved, []).append(file_cfg.input)
 
-    duplicates = {stem: paths for stem, paths in collisions.items() if len(paths) > 1}
+    duplicates = {path: inputs for path, inputs in collisions.items() if len(inputs) > 1}
     if not duplicates:
         return
 
     summary = " / ".join(
-        f"{stem}: {', '.join(str(path) for path in paths)}"
-        for stem, paths in sorted(duplicates.items())
+        f"{path}: {', '.join(str(src) for src in inputs)}" for path, inputs in sorted(duplicates.items())
     )
     raise ConfigError(
-        "同じファイル名 (stem) の HTML が複数指定されています。出力ファイルが上書きされるため、"
-        "ファイル名を変更するか個別に実行してください。対象: "
+        "同じ出力ファイルに複数の HTML が割り当てられています。`output` を変更して回避してください。対象: "
         f"{summary}"
     )
 
