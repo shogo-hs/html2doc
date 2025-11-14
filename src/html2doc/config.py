@@ -145,6 +145,7 @@ def load_file_list(path: str | Path) -> List[FileConfig]:
     base_dir = list_path.parent
     files: List[FileConfig] = []
     for idx, entry in enumerate(raw_entries, start=1):
+        output = None
         if isinstance(entry, (str, Path)):
             input_value = entry
             title = None
