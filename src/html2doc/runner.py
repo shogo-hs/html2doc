@@ -1,9 +1,9 @@
-"""CLI から呼び出される実行ロジック。"""
+"""LangGraph パイプライン実行のオーケストレーション。"""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 from .config import ConfigError, FileConfig, load_config, load_file_list
 from .graph import build_pipeline
@@ -37,6 +37,9 @@ def run(
         config.files = [*config.files, *extra_files]
     if not config.files:
         raise ConfigError("`files` または --inputs には 1 件以上のエントリーが必要です。")
+
+    _ensure_unique_output_stems(config.files)
+
     if output_override:
         config.output_dir = output_override.resolve()
     output_dir = config.ensure_output_dir()
@@ -91,6 +94,29 @@ def _build_metadata(file_cfg: FileConfig, output_dir: Path) -> DocumentMetadata:
         output_path=output_path,
         title=file_cfg.title,
         context=file_cfg.context,
+    )
+
+
+def _ensure_unique_output_stems(files: Iterable[FileConfig]) -> None:
+    """stem が重複する入力ファイルを検出してエラーにする。"""
+
+    collisions: dict[str, list[Path]] = {}
+    for file_cfg in files:
+        stem = file_cfg.input.stem
+        collisions.setdefault(stem, []).append(file_cfg.input)
+
+    duplicates = {stem: paths for stem, paths in collisions.items() if len(paths) > 1}
+    if not duplicates:
+        return
+
+    summary = " / ".join(
+        f"{stem}: {', '.join(str(path) for path in paths)}"
+        for stem, paths in sorted(duplicates.items())
+    )
+    raise ConfigError(
+        "同じファイル名 (stem) の HTML が複数指定されています。出力ファイルが上書きされるため、"
+        "ファイル名を変更するか個別に実行してください。対象: "
+        f"{summary}"
     )
 
 
