@@ -5,7 +5,7 @@ LangGraph と OpenAI を使い、ローカルにある HTML 応対マニュア�
 ## セットアップ
 1. `.env.example` をコピーして `.env` を作成し、`OPENAI_API_KEY`（必要に応じて `HTML2DOC_MODEL`）を設定します。
 2. 依存インストール: `uv sync`
-3. 以降のコマンドは `uv run ...` で実行します（例: `uv run html2doc --help`）。
+3. 以降のコマンドは `uv run html2doc run ...` で実行します（ヘルプ確認は `uv run html2doc run --help`）。
 
 ## 使い方
 1. `.env` で設定した OpenAI API キーが読み込まれていることを確認します（CLI 起動時に自動で読み込まれます）。
