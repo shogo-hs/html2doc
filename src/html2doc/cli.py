@@ -1,28 +1,32 @@
 """html2doc CLI エントリポイント。"""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 import typer
+from typer.main import get_command
 
 from .config import ConfigError
 from .runner import run
 
-app = typer.Typer(help="HTML 応対マニュアルを LangGraph + OpenAI で Markdown へ変換するツール。")
+app = typer.Typer(
+    help="HTML 応対マニュアルを LangGraph + OpenAI で Markdown へ変換するツール。",
+    no_args_is_help=True,
+)
+
+LEGACY_OPTION_NAMES = {"--config", "-c", "--output-dir", "--inputs"}
+LEGACY_PREFIXES = ("--config=", "--output-dir=", "--inputs=")
 
 
-@app.command(name="run")
-def run_command(
-    config: Path = typer.Option(..., "--config", "-c", help="変換対象を記述した YAML ファイルへのパス"),
-    output_dir: Optional[Path] = typer.Option(None, "--output-dir", help="出力先ディレクトリ（省略時は設定ファイルに従う）"),
-    input_list: Optional[Path] = typer.Option(
-        None,
-        "--inputs",
-        help="HTML ファイルのパスを列挙した YAML ファイル。`files` セクションと併用可能",
-    ),
-) -> None:
-    """設定ファイルをもとに変換を実行する。"""
+@app.callback()
+def _cli_root() -> None:
+    """html2doc CLI のルートコマンド。"""
+
+
+def _execute_run(config: Path, output_dir: Optional[Path], input_list: Optional[Path]) -> None:
+    """共通の実処理。"""
 
     try:
         results = run(config, output_override=output_dir, input_list=input_list)
@@ -52,10 +56,55 @@ def run_command(
         raise typer.Exit(code=1)
 
 
-def main() -> None:
+@app.command(name="run")
+def run_command(
+    config: Path = typer.Option(..., "--config", "-c", help="変換対象を記述した YAML ファイルへのパス"),
+    output_dir: Optional[Path] = typer.Option(None, "--output-dir", help="出力先ディレクトリ（省略時は設定ファイルに従う）"),
+    input_list: Optional[Path] = typer.Option(
+        None,
+        "--inputs",
+        help="HTML ファイルのパスを列挙した YAML ファイル。`files` セクションと併用可能",
+    ),
+) -> None:
+    """設定ファイルをもとに変換を実行する。"""
+
+    _execute_run(config, output_dir, input_list)
+
+
+def _contains_legacy_run_option(args: Sequence[str]) -> bool:
+    for arg in args:
+        if arg in LEGACY_OPTION_NAMES:
+            return True
+        if any(arg.startswith(prefix) for prefix in LEGACY_PREFIXES):
+            return True
+        if arg.startswith("-c") and arg not in {"-c", "--config"} and not arg.startswith("--"):
+            return True
+    return False
+
+
+def _inject_legacy_command(args: Sequence[str]) -> list[str]:
+    normalized = list(args)
+    if not normalized:
+        return normalized
+
+    known_commands = {command.name for command in app.registered_commands}
+    if normalized[0] in known_commands:
+        return normalized
+
+    if _contains_legacy_run_option(normalized):
+        return ["run", *normalized]
+
+    return normalized
+
+
+def main(argv: Optional[Sequence[str]] = None) -> None:
     """Typer アプリのエントリーポイント。"""
 
-    app()
+    args = list(argv) if argv is not None else sys.argv[1:]
+    prog_name = sys.argv[0] if argv is None else "html2doc"
+    normalized = _inject_legacy_command(args)
+    command = get_command(app)
+    command.main(args=normalized, prog_name=prog_name, standalone_mode=True)
 
 
 if __name__ == "__main__":  # pragma: no cover

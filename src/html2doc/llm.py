@@ -4,12 +4,40 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from openai import OpenAI
 
 from .config import ModelConfig
 from .models import Asset, DocumentMetadata, KnowledgeUnit, RelationEdge, SectionChunk
+
+
+def _text_content(text: str) -> dict[str, str]:
+    """Responses API で利用するテキストコンテンツ辞書を生成する。"""
+
+    return {"type": "input_text", "text": text}
+
+
+def _normalize_messages(messages: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """OpenAI Responses API の仕様に合わせてメッセージ配列を補正する。"""
+
+    normalized: List[Dict[str, Any]] = []
+    for message in messages:
+        raw_contents = message.get("content") or []
+        contents: List[Any] = []
+        for item in raw_contents:
+            if isinstance(item, dict):
+                content_type = item.get("type")
+                if content_type == "text":
+                    contents.append({**item, "type": "input_text"})
+                else:
+                    contents.append(item)
+            elif isinstance(item, str):
+                contents.append(_text_content(item))
+            else:
+                contents.append(item)
+        normalized.append({**message, "content": contents})
+    return normalized
 
 
 class MarkdownGenerator:
@@ -45,18 +73,12 @@ class MarkdownGenerator:
         if outline:
             context_snippets.append(f"ドキュメント全体の構成:\n{outline}")
         messages = [
-            {"role": "system", "content": [{"type": "text", "text": instructions}]},
+            {"role": "system", "content": [_text_content(instructions)]},
             {
                 "role": "user",
                 "content": [
-                    *(
-                        {"type": "text", "text": snippet}
-                        for snippet in context_snippets
-                    ),
-                    {
-                        "type": "text",
-                        "text": f"セクション {section.identifier}:\n{section_text}",
-                    },
+                    *(_text_content(snippet) for snippet in context_snippets),
+                    _text_content(f"セクション {section.identifier}:\n{section_text}"),
                 ],
             },
         ]
@@ -85,11 +107,11 @@ class MarkdownGenerator:
             return []
         summary = json.dumps([item.to_dict() for item in knowledge], ensure_ascii=False)
         messages = [
-            {"role": "system", "content": [{"type": "text", "text": instructions}]},
+            {"role": "system", "content": [_text_content(instructions)]},
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": f"ナレッジ一覧: {summary}"},
+                    _text_content(f"ナレッジ一覧: {summary}"),
                 ],
             },
         ]
@@ -131,8 +153,8 @@ class MarkdownGenerator:
             ensure_ascii=False,
         )
         messages = [
-            {"role": "system", "content": [{"type": "text", "text": instructions}]},
-            {"role": "user", "content": [{"type": "text", "text": payload}]},
+            {"role": "system", "content": [_text_content(instructions)]},
+            {"role": "user", "content": [_text_content(payload)]},
         ]
         text = self._run_request(messages)
         return text.strip()
@@ -160,8 +182,8 @@ class MarkdownGenerator:
             f"{markdown}"
         )
         messages = [
-            {"role": "system", "content": [{"type": "text", "text": instructions}]},
-            {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+            {"role": "system", "content": [_text_content(instructions)]},
+            {"role": "user", "content": [_text_content(user_prompt)]},
         ]
         text = self._run_request(messages, max_output_tokens=600)
         data = self._parse_json(text)
@@ -198,16 +220,17 @@ class MarkdownGenerator:
         header_lines.append("以下の HTML を Markdown に変換してください。")
         user_prompt = "\n".join(header_lines) + "\n" + html
         return [
-            {"role": "system", "content": [{"type": "text", "text": instructions}]},
-            {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+            {"role": "system", "content": [_text_content(instructions)]},
+            {"role": "user", "content": [_text_content(user_prompt)]},
         ]
 
     def _run_request(self, messages: List[Dict[str, object]], **overrides: object) -> str:
         kwargs = {**self._build_request_kwargs(), **overrides}
+        normalized_messages = _normalize_messages(messages)
         response = self._client.responses.create(
             model=self._model_config.name,
             temperature=self._model_config.temperature,
-            input=messages,
+            input=normalized_messages,
             **kwargs,
         )
         return (response.output_text or "").strip()
