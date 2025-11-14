@@ -51,6 +51,7 @@ class MarkdownGenerator:
             )
         self._client = OpenAI(api_key=api_key)
         self._model_config = model_config
+        self._usage_totals: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
 
     def convert(self, metadata: DocumentMetadata, html: str) -> str:
         """（後方互換用）HTML 全文を Markdown 化する。"""
@@ -58,6 +59,11 @@ class MarkdownGenerator:
         messages = self._messages_for_markdown(metadata, html)
         text = self._run_request(messages)
         return text.strip()
+
+    def snapshot_usage(self) -> Dict[str, int]:
+        """これまでに消費したトークン数を返す。"""
+
+        return dict(self._usage_totals)
 
     def extract_knowledge(self, section: SectionChunk, *, outline: Optional[str] = None) -> List[KnowledgeUnit]:
         """セクションからナレッジ単位を抽出する。"""
@@ -233,7 +239,33 @@ class MarkdownGenerator:
             input=normalized_messages,
             **kwargs,
         )
+        self._record_usage(getattr(response, "usage", None))
         return (response.output_text or "").strip()
+
+    def _record_usage(self, usage_obj: Any) -> None:
+        if not usage_obj:
+            return
+        for field in ("input_tokens", "output_tokens"):
+            value = self._extract_usage_value(usage_obj, field)
+            if value is not None:
+                self._usage_totals[field] = self._usage_totals.get(field, 0) + int(value)
+
+    @staticmethod
+    def _extract_usage_value(usage_obj: Any, field: str) -> Optional[int]:
+        if hasattr(usage_obj, field):
+            value = getattr(usage_obj, field)
+            if value is not None:
+                return int(value)
+        if isinstance(usage_obj, dict) and usage_obj.get(field) is not None:
+            return int(usage_obj[field])
+        if hasattr(usage_obj, "get"):
+            try:
+                value = usage_obj.get(field)
+            except Exception:  # pragma: no cover - defensive
+                value = None
+            if value is not None:
+                return int(value)
+        return None
 
     def _parse_json(self, text: str) -> List[dict]:
         cleaned = text.strip()

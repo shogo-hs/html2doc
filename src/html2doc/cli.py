@@ -9,7 +9,7 @@ import typer
 from typer.main import get_command
 
 from .config import ConfigError
-from .runner import run
+from .runner import DocumentResult, run
 
 app = typer.Typer(
     help="HTML 応対マニュアルを LangGraph + OpenAI で Markdown へ変換するツール。",
@@ -44,12 +44,12 @@ def _execute_run(config: Path, output_dir: Optional[Path], input_list: Optional[
             msg = f"[OK] {item.metadata.input_path} -> {item.output_path}"
             if item.graph_path:
                 msg += f" (graph: {item.graph_path})"
+            msg += _format_usage_suffix(item)
             typer.secho(msg, fg=typer.colors.GREEN)
         else:
-            typer.secho(
-                f"[NG] {item.metadata.input_path}: {item.error}",
-                fg=typer.colors.RED,
-            )
+            msg = f"[NG] {item.metadata.input_path}: {item.error}"
+            msg += _format_usage_suffix(item)
+            typer.secho(msg, fg=typer.colors.RED)
 
     typer.echo(f"成功 {success} 件 / 失敗 {failure} 件")
     if failure:
@@ -95,6 +95,17 @@ def _inject_legacy_command(args: Sequence[str]) -> list[str]:
         return ["run", *normalized]
 
     return normalized
+
+
+def _format_usage_suffix(result: DocumentResult) -> str:
+    tokens = []
+    if result.usage_input_tokens is not None:
+        tokens.append(f"in={result.usage_input_tokens}")
+    if result.usage_output_tokens is not None:
+        tokens.append(f"out={result.usage_output_tokens}")
+    if not tokens:
+        return ""
+    return " [tokens " + " ".join(tokens) + "]"
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:

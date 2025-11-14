@@ -49,20 +49,39 @@ class RunRequestTest(unittest.TestCase):
         sent_messages = responses_stub.last_kwargs["input"]
         self.assertEqual(sent_messages[0]["content"][0]["type"], "input_text")
 
+    def test_run_request_tracks_usage(self) -> None:
+        responses_stub = _ResponsesStub(usage={"input_tokens": 11, "output_tokens": 5})
+        generator = MarkdownGenerator(ModelConfig(name="fake-model"))
+        generator._client = SimpleNamespace(responses=responses_stub)
+
+        generator._run_request(
+            [
+                {"role": "system", "content": [{"type": "text", "text": "test"}]},
+            ]
+        )
+
+        snapshot = generator.snapshot_usage()
+        self.assertEqual(snapshot["input_tokens"], 11)
+        self.assertEqual(snapshot["output_tokens"], 5)
+
 
 class _ResponsesStub:
     """OpenAI クライアントの `responses` エンドポイントを模倣するスタブ。"""
 
-    def __init__(self) -> None:
+    def __init__(self, *, usage: dict | None = None) -> None:
         self.last_kwargs: dict | None = None
+        self._usage = usage or {}
 
     def create(self, **kwargs):  # type: ignore[override]
         self.last_kwargs = kwargs
 
         class _Result:
             output_text = ""
+            usage = None
 
-        return _Result()
+        result = _Result()
+        result.usage = self._usage
+        return result
 
 
 if __name__ == "__main__":  # pragma: no cover

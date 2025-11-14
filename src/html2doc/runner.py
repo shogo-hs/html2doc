@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional
 
 from .config import ConfigError, FileConfig, load_config, load_file_list
 from .graph import build_pipeline
@@ -21,6 +21,8 @@ class DocumentResult:
     graph_path: Optional[Path] = None
     report: Optional[ValidationReport] = None
     error: Optional[str] = None
+    usage_input_tokens: Optional[int] = None
+    usage_output_tokens: Optional[int] = None
 
 
 def run(
@@ -60,11 +62,13 @@ def run(
             )
             continue
 
+        usage_before = llm.snapshot_usage()
         try:
             final_state = pipeline.invoke({"metadata": metadata})
             output_path = Path(final_state.get("output_path", metadata.output_path))
             graph_path_str = final_state.get("graph_path")
             graph_path = Path(graph_path_str) if graph_path_str else None
+            usage_delta = _usage_delta(usage_before, llm.snapshot_usage())
             results.append(
                 DocumentResult(
                     metadata=metadata,
@@ -72,14 +76,19 @@ def run(
                     output_path=output_path,
                     graph_path=graph_path,
                     report=final_state.get("report"),
+                    usage_input_tokens=usage_delta.get("input_tokens"),
+                    usage_output_tokens=usage_delta.get("output_tokens"),
                 )
             )
         except Exception as exc:  # pragma: no cover - 外部 API 依存
+            usage_delta = _usage_delta(usage_before, llm.snapshot_usage())
             results.append(
                 DocumentResult(
                     metadata=metadata,
                     success=False,
                     error=str(exc),
+                    usage_input_tokens=usage_delta.get("input_tokens"),
+                    usage_output_tokens=usage_delta.get("output_tokens"),
                 )
             )
 
@@ -124,6 +133,11 @@ def _ensure_unique_output_paths(files: Iterable[FileConfig], output_dir: Path) -
         "同じ出力ファイルに複数の HTML が割り当てられています。`output` を変更して回避してください。対象: "
         f"{summary}"
     )
+
+
+def _usage_delta(before: Dict[str, int], after: Dict[str, int]) -> Dict[str, int]:
+    keys = {"input_tokens", "output_tokens"}
+    return {key: max(0, after.get(key, 0) - before.get(key, 0)) for key in keys}
 
 
 __all__ = ["DocumentResult", "run"]

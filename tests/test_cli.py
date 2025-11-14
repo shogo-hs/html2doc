@@ -8,6 +8,8 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from html2doc import cli
+from html2doc.models import DocumentMetadata
+from html2doc.runner import DocumentResult
 
 
 class CliTestCase(unittest.TestCase):
@@ -63,6 +65,34 @@ class CliTestCase(unittest.TestCase):
             self.assertEqual(mock_run.call_args.args[0], config)
             self.assertIsNone(mock_run.call_args.kwargs["output_override"])
             self.assertIsNone(mock_run.call_args.kwargs["input_list"])
+
+    def test_cli_prints_token_usage(self) -> None:
+        with self.runner.isolated_filesystem():
+            config = Path("config.yaml")
+            self._write_dummy(config)
+
+            metadata = DocumentMetadata(
+                input_path=Path("input.html"),
+                output_path=Path("out.md"),
+                title=None,
+                context=None,
+            )
+            result_obj = DocumentResult(
+                metadata=metadata,
+                success=True,
+                output_path=metadata.output_path,
+                graph_path=None,
+                report=None,
+                error=None,
+                usage_input_tokens=120,
+                usage_output_tokens=45,
+            )
+
+            with patch("html2doc.cli.run", return_value=[result_obj]):
+                cli_result = self.runner.invoke(cli.app, ["run", "--config", str(config)])
+
+            self.assertEqual(cli_result.exit_code, 0)
+            self.assertIn("tokens in=120 out=45", cli_result.output)
 
 
 if __name__ == "__main__":  # pragma: no cover
